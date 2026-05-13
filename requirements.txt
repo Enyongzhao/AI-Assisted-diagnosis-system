@@ -1,0 +1,6 @@
+# Phase 1 dependencies - design_doc Section 3 Tech Stack
+Django==4.2.16
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+psycopg2-binary==2.9.9
+python-decouple==3.8

@@ -1,0 +1,108 @@
+# design_doc §7.1 — Local Docker Compose environment
+#
+# Phase 1 active services:  api + db
+# Phase 2 will uncomment:   celery_worker + redis
+# Phase 5 will add:         prometheus + grafana (with monitoring config)
+#
+# Usage:
+#   docker compose up --build          # start api + db
+#   docker compose up --build -d       # detached mode
+#   docker compose logs -f api         # follow API logs
+#   docker compose exec api python manage.py createsuperuser
+
+services:
+
+  # ── Django REST API ─────────────────────────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      SECRET_KEY: dev-secret-key-docker-phase1-change-in-production
+      DEBUG: "True"
+      DB_HOST: db
+      DB_NAME: diagnosis_db
+      DB_USER: user
+      DB_PASSWORD: pass
+      DB_PORT: "5432"
+      # Phase 2 additions:
+      # REDIS_URL: redis://redis:6379/0
+      # LLM_PROVIDER: claude
+      # CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Mount source for live reload during development
+      - .:/app
+    restart: unless-stopped
+
+  # ── PostgreSQL 15 ────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: diagnosis_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # exposed so you can connect with DBeaver / psql locally
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d diagnosis_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Celery Worker (Phase 2) ──────────────────────────────────────────────────
+  # Uncomment after Phase 2 tasks are implemented
+  # celery_worker:
+  #   build: .
+  #   command: celery -A config worker --loglevel=info --concurrency=4
+  #   environment:
+  #     DJANGO_SETTINGS_MODULE: config.settings.local
+  #     SECRET_KEY: dev-secret-key-docker-phase1-change-in-production
+  #     DB_HOST: db
+  #     DB_NAME: diagnosis_db
+  #     DB_USER: user
+  #     DB_PASSWORD: pass
+  #     REDIS_URL: redis://redis:6379/0
+  #     LLM_PROVIDER: claude
+  #     CLAUDE_API_KEY: ${CLAUDE_API_KEY}
+  #   depends_on:
+  #     - db
+  #     - redis
+  #   volumes:
+  #     - .:/app
+  #   restart: unless-stopped
+
+  # ── Redis (Phase 2) ─────────────────────────────────────────────────────────
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   restart: unless-stopped
+
+  # ── Prometheus (Phase 5) ────────────────────────────────────────────────────
+  # prometheus:
+  #   image: prom/prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.local.yml:/etc/prometheus/prometheus.yml
+  #   restart: unless-stopped
+
+  # ── Grafana (Phase 5) ───────────────────────────────────────────────────────
+  # grafana:
+  #   image: grafana/grafana
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - prometheus
+  #   restart: unless-stopped
+
+volumes:
+  pg_data:

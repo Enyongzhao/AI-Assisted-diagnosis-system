@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(pip --version)",
+      "PowerShell(python -m pip --version)",
+      "PowerShell(cd \"e:\\\\AI-Assisted Diagnosis System\"; Copy-Item .env.example .env; \\(Get-Content .env\\) -replace 'your-secret-key-change-this-in-production', 'dev-secret-key-phase1-local-only-abc123xyz' | Set-Content .env -Encoding utf8; Write-Host \".env created\")",
+      "PowerShell(docker --version 2>&1)",
+      "PowerShell(head -3)",
+      "PowerShell(docker run --name diagnosis-pg-dev -e POSTGRES_DB=diagnosis_db -e POSTGRES_USER=user -e POSTGRES_PASSWORD=pass -p 5432:5432 -d postgres:15 2>&1)",
+      "Read(//c/Program Files/**)"
+    ]
+  }
+}
