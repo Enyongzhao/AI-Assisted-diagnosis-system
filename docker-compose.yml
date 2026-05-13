@@ -104,6 +104,24 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # ── React/Vite Frontend (Phase 3) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # Proxy target inside Docker: use service name, not localhost
+      BACKEND_URL: http://api:8000
+    volumes:
+      # Bind-mount source for hot-reload; anonymous volume keeps container node_modules
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
+
   # ── Prometheus (Phase 5) ────────────────────────────────────────────────────
   # prometheus:
   #   image: prom/prometheus

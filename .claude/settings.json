@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "PowerShell(cd \"e:\\\\AI-Assisted Diagnosis System\"; docker compose config --quiet 2>&1; Write-Host \"compose config valid: $?\")",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
     ]
   }
 }
