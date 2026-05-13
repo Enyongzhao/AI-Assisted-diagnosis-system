@@ -1,9 +1,10 @@
 """
 Repository layer for DiagnosisJob — design_doc §12 "Controller → Service → Repository"
-Phase 1: create + get + role-based list queries.
-Phase 2 will add update_status().
-Phase 4 will add find_recent_by_patient() for duplicate detection.
+Phase 1: create + get + role-based list queries + update_status.
+Phase 2: add find_recent_by_patient() for duplicate detection (used by DiagnosisService).
 """
+from django.utils import timezone
+
 from apps.diagnosis.models import DiagnosisJob
 
 
@@ -74,7 +75,28 @@ class DiagnosisRepository:
     @staticmethod
     def update_status(diagnosis_id, new_status):
         """
-        Phase 2 will call this from Celery tasks.
-        Defined here so the signature is stable from Phase 1.
+        Called by Celery tasks to advance the status machine.
+        Also stamps completed_at when the job reaches the terminal 'completed' state.
         """
-        DiagnosisJob.objects.filter(id=diagnosis_id).update(status=new_status)
+        update_fields = {"status": new_status}
+        if new_status == DiagnosisJob.STATUS_COMPLETED:
+            update_fields["completed_at"] = timezone.now()
+        DiagnosisJob.objects.filter(id=diagnosis_id).update(**update_fields)
+
+    @staticmethod
+    def find_recent_by_patient(patient_id, within_hours: int = 24):
+        """
+        design_doc §4.3 — duplicate detection.
+        Returns the most recent non-deleted DiagnosisJob for the given patient
+        submitted within the last `within_hours` hours, or None.
+        Phase 4 DiagnosisService uses this to decide Hard Error vs Soft Warning.
+        """
+        from datetime import timedelta
+
+        cutoff = timezone.now() - timedelta(hours=within_hours)
+        return (
+            DiagnosisJob.objects
+            .filter(patient_id=patient_id, submitted_at__gte=cutoff, is_deleted=False)
+            .order_by("-submitted_at")
+            .first()
+        )

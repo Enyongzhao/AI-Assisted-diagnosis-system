@@ -5,15 +5,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Phase 2 时取消注释（WeasyPrint 需要 pango/cairo）:
-# RUN apt-get update && apt-get install -y \
-#     libpango-1.0-0 \
-#     libpangoft2-1.0-0 \
-#     libpangocairo-1.0-0 \
-#     libgdk-pixbuf-xlib-2.0-0 \
-#     libffi-dev \
-#     shared-mime-info \
-#     && rm -rf /var/lib/apt/lists/*
+# WeasyPrint system deps — design_doc §7.1 (Phase 2)
+# Note: libgdk-pixbuf-xlib-2.0-0 (NOT libgdk-pixbuf2.0-0, removed in Debian trixie)
+RUN apt-get update && apt-get install -y \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-xlib-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

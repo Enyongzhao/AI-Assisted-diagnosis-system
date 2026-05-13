@@ -1,11 +1,9 @@
 """
-Diagnosis views — design_doc §4.3 (Phase 1 implementation)
+Diagnosis views — design_doc §4.3
 
-POST   /api/v1/diagnosis/          → 202  creates job, status=pending (no async yet)
+POST   /api/v1/diagnosis/          → 202  creates job, fires generate_llm_report.delay()
 GET    /api/v1/diagnosis/          → 200  paginated list (role-filtered)
 GET    /api/v1/diagnosis/{id}/     → 200  detail / polling endpoint
-
-Phase 2 will wire POST to Celery task and status will advance beyond 'pending'.
 """
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
@@ -68,16 +66,16 @@ class DiagnosisListCreateView(APIView):
             free_text=data.get("free_text", ""),
         )
 
-        # Phase 2: generate_llm_report.delay(str(job.id)) goes here
+        # design_doc §6 — fire async LLM task; API returns 202 immediately
+        from tasks.llm_task import generate_llm_report
+        generate_llm_report.delay(str(job.id))
+
         return Response(
             {
                 "diagnosis_id": str(job.id),
                 "status": job.status,
                 "submitted_at": job.submitted_at.isoformat(),
-                "message": (
-                    "Diagnosis task received. "
-                    "LLM report generation will begin once Phase 2 is wired up."
-                ),
+                "message": "LLM report generation in progress. Poll /api/v1/diagnosis/{id}/ for result.",
             },
             status=status.HTTP_202_ACCEPTED,
         )

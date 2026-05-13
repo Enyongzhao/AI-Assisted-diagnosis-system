@@ -1,6 +1,8 @@
 """
 Root URL configuration — design_doc §4 base path /api/v1/
 """
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
@@ -19,3 +21,7 @@ urlpatterns = [
     # design_doc §4.4 — User management (Admin only)
     path("api/v1/users/", include("apps.authentication.admin_urls")),
 ]
+
+# Serve generated PDF reports from media/ in local dev (DEBUG=True only)
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
