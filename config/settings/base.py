@@ -106,10 +106,44 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
+# ── Celery — design_doc §6 ─────────────────────────────────────────────────
+CELERY_BROKER_URL = config("REDIS_URL", default="redis://redis:6379/0")
+CELERY_RESULT_BACKEND = config("REDIS_URL", default="redis://redis:6379/0")
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_TRACK_STARTED = True
+# Explicitly import top-level tasks/ package on worker startup.
+# autodiscover_tasks(["tasks"]) looks for tasks.tasks — wrong package structure.
+CELERY_IMPORTS = ("tasks.llm_task", "tasks.pdf_task")
+
+# ── Duplicate detection windows — design_doc §4.3 ─────────────────────────
+# Set to small values (e.g. 0.01 = ~36s) in .env to test all three scenarios
+# without waiting. Production keeps defaults: 1h hard error, 24h soft warning.
+DUPLICATE_HARD_ERROR_HOURS = config("DUPLICATE_HARD_ERROR_HOURS", default=1.0, cast=float)
+DUPLICATE_SOFT_WARN_HOURS  = config("DUPLICATE_SOFT_WARN_HOURS",  default=24.0, cast=float)
+
+# ── LLM Adapter — design_doc §6 ───────────────────────────────────────────
+# LLM_PROVIDER: "claude" | "openai" | "mock"
+# "mock" returns a fixed JSON response — safe default for dev/test
+LLM_PROVIDER = config("LLM_PROVIDER", default="mock")
+CLAUDE_API_KEY = config("CLAUDE_API_KEY", default="")
+OPENAI_API_KEY = config("OPENAI_API_KEY", default="")
+
+# ── AWS S3 — design_doc §2 (PDF report storage) ───────────────────────────
+# Leave AWS_S3_BUCKET_NAME empty → S3Adapter falls back to local filesystem
+AWS_S3_BUCKET_NAME = config("AWS_S3_BUCKET_NAME", default="")
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+AWS_DEFAULT_REGION = config("AWS_DEFAULT_REGION", default="us-east-1")
+
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "/static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

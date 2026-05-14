@@ -1,13 +1,13 @@
 # design_doc §7.1 — Local Docker Compose environment
 #
-# Phase 1 active services:  api + db
-# Phase 2 will uncomment:   celery_worker + redis
-# Phase 5 will add:         prometheus + grafana (with monitoring config)
+# Phase 2 active services: api + db + redis + celery_worker
+# Phase 5 will add:        prometheus + grafana (with monitoring config)
 #
 # Usage:
-#   docker compose up --build          # start api + db
+#   docker compose up --build          # start all services
 #   docker compose up --build -d       # detached mode
 #   docker compose logs -f api         # follow API logs
+#   docker compose logs -f celery_worker
 #   docker compose exec api python manage.py createsuperuser
 
 services:
@@ -26,16 +26,51 @@ services:
       DB_USER: user
       DB_PASSWORD: pass
       DB_PORT: "5432"
-      # Phase 2 additions:
-      # REDIS_URL: redis://redis:6379/0
-      # LLM_PROVIDER: claude
-      # CLAUDE_API_KEY: ${CLAUDE_API_KEY}
-      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: mock
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # S3 left empty → S3Adapter uses local filesystem fallback
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      # Mount source for live reload during development
+      - .:/app
+    restart: unless-stopped
+
+  # ── Celery Worker (Phase 2) ──────────────────────────────────────────────────
+  celery_worker:
+    build: .
+    command: celery -A config worker --loglevel=info --concurrency=4
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      SECRET_KEY: dev-secret-key-docker-phase1-change-in-production
+      DEBUG: "True"
+      DB_HOST: db
+      DB_NAME: diagnosis_db
+      DB_USER: user
+      DB_PASSWORD: pass
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: mock
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
       - .:/app
     restart: unless-stopped
 
@@ -57,34 +92,35 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # ── Celery Worker (Phase 2) ──────────────────────────────────────────────────
-  # Uncomment after Phase 2 tasks are implemented
-  # celery_worker:
-  #   build: .
-  #   command: celery -A config worker --loglevel=info --concurrency=4
-  #   environment:
-  #     DJANGO_SETTINGS_MODULE: config.settings.local
-  #     SECRET_KEY: dev-secret-key-docker-phase1-change-in-production
-  #     DB_HOST: db
-  #     DB_NAME: diagnosis_db
-  #     DB_USER: user
-  #     DB_PASSWORD: pass
-  #     REDIS_URL: redis://redis:6379/0
-  #     LLM_PROVIDER: claude
-  #     CLAUDE_API_KEY: ${CLAUDE_API_KEY}
-  #   depends_on:
-  #     - db
-  #     - redis
-  #   volumes:
-  #     - .:/app
-  #   restart: unless-stopped
-
   # ── Redis (Phase 2) ─────────────────────────────────────────────────────────
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6379:6379"
-  #   restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── React/Vite Frontend (Phase 3) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # Proxy target inside Docker: use service name, not localhost
+      BACKEND_URL: http://api:8000
+    volumes:
+      # Bind-mount source for hot-reload; anonymous volume keeps container node_modules
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
 
   # ── Prometheus (Phase 5) ────────────────────────────────────────────────────
   # prometheus:

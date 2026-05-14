@@ -62,7 +62,7 @@ class DoctorOpinionResponseSerializer(serializers.Serializer):
 class DiagnosisDetailSerializer(serializers.ModelSerializer):
     """
     design_doc §4.3 GET /api/v1/diagnosis/{id}/ — full detail with nested objects.
-    llm_report and doctor_opinion are null until Phase 2 populates them.
+    Phase 4: exposes has_warning + warning_type so the frontend can render WarningBanner.
     """
     diagnosis_id = serializers.UUIDField(source="id", read_only=True)
     llm_report = serializers.SerializerMethodField()
@@ -74,6 +74,8 @@ class DiagnosisDetailSerializer(serializers.ModelSerializer):
             "diagnosis_id",
             "status",
             "submitted_at",
+            "has_warning",
+            "warning_type",
             "llm_report",
             "doctor_opinion",
         ]
