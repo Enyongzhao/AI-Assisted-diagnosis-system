@@ -1,0 +1,158 @@
+# Grafana alert rules — design_doc §8.2
+# Four alert rules per design_doc:
+#   1. DLQ > 0 持续 1 分钟
+#   2. LLM 失败率 > 10%（过去 5 分钟）
+#   3. SQS 队列深度 > 50 持续 5 分钟
+#   4. API p95 响应时间 > 3s
+#
+# Notification channel: Slack (configure webhook in Grafana UI under
+# Alerting → Contact Points → add Slack webhook URL)
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: "AI Diagnosis Alerts"
+    folder: "AI Diagnosis System"
+    interval: 1m
+    rules:
+
+      # ── Rule 1: DLQ messages > 0 ────────────────────────────────────────────
+      - uid: alert-dlq-001
+        title: "DLQ has messages — tasks are failing"
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: dlq_message_count
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            queryType: ""
+            relativeTimeRange: { from: 60, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator: { params: [0], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+              refId: C
+              type: classic_conditions
+        noDataState: NoData
+        execErrState: Alerting
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DLQ contains {{ $values.A }} message(s). Tasks are failing after max retries."
+
+      # ── Rule 2: LLM failure rate > 10% ──────────────────────────────────────
+      - uid: alert-llm-fail-001
+        title: "LLM failure rate exceeds 10%"
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: rate(diagnosis_jobs_completed_total{status="failed"}[5m]) / (rate(diagnosis_jobs_submitted_total[5m]) + 0.001)
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator: { params: [0.1], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+              refId: C
+              type: classic_conditions
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM failure rate is {{ $values.A | humanizePercentage }} over the last 5 minutes."
+
+      # ── Rule 3: SQS queue depth > 50 ────────────────────────────────────────
+      - uid: alert-sqs-depth-001
+        title: "SQS queue depth exceeds 50"
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sqs_queue_depth
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator: { params: [50], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+              refId: C
+              type: classic_conditions
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SQS queue depth is {{ $values.A }}. Workers may be falling behind."
+
+      # ── Rule 4: API p95 latency > 3s ────────────────────────────────────────
+      - uid: alert-api-latency-001
+        title: "API p95 response time exceeds 3 seconds"
+        condition: C
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, rate(django_http_requests_latency_seconds_by_view_method_bucket[5m]))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            queryType: ""
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "__expr__"
+            model:
+              conditions:
+                - evaluator: { params: [3], type: gt }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { params: [], type: last }
+                  type: query
+              refId: C
+              type: classic_conditions
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency is {{ $values.A | humanizeDuration }}. Check for slow endpoints."

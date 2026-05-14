@@ -1,0 +1,16 @@
+# Prometheus scrape config — LOCAL development only.
+# design_doc §8.1 / implementation_plan.md problem-5 fix
+#
+# Only scrapes api:8000/metrics (django-prometheus).
+# No cloudwatch-exporter here — there is no SQS in local dev.
+# docker-compose.yml mounts THIS file; prometheus.prod.yml is for AWS deployment.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "django_api"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics

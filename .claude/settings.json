@@ -6,7 +6,25 @@
       "Bash(npm --version)",
       "Bash(npm install *)",
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(docker exec *)",
+      "Bash(curl -s -u admin:admin http://localhost:3001/api/dashboards/home)",
+      "Bash(curl -s -u \"admin:admin\" http://localhost:3001/api/search?type=dash-db)",
+      "Bash(docker volume *)",
+      "Bash(curl -s -u \"admin:admin\" \"http://localhost:3001/api/search?type=dash-db\")",
+      "Bash(curl -s -u \"admin:admin\" \"http://localhost:3001/api/datasources\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(curl -s \"http://localhost:3001/api/datasources\" -H \"Authorization: Basic $\\(echo -n 'admin:admin')",
+      "Bash(python3 -c \"import sys,json; ds=json.load\\(sys.stdin\\); [print\\(d['name'], d['uid']\\) for d in ds]\")",
+      "Bash(curl -s -u admin:admin --anyauth \"http://localhost:3001/api/datasources\")",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git filter-branch *)",
+      "Bash(git stash *)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \"git rm -rf --cached --ignore-unmatch 'infra/terraform/.terraform/'\" --prune-empty -- --all)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)"
     ]
   }
 }

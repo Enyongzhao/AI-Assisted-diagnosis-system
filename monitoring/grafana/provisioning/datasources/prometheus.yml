@@ -1,0 +1,14 @@
+# Grafana auto-provisioning: Prometheus datasource.
+# design_doc §8.2 — mounted at /etc/grafana/provisioning/datasources/
+# Grafana reads this on startup; no manual UI configuration needed.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

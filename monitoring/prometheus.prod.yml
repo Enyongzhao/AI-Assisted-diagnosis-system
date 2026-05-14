@@ -1,0 +1,25 @@
+# Prometheus scrape config — PRODUCTION (AWS deployment).
+# design_doc §8.1 / implementation_plan.md problem-5 fix
+#
+# Scrapes both Django API metrics AND AWS CloudWatch SQS metrics
+# via cloudwatch-exporter sidecar (port 9106).
+#
+# cloudwatch-exporter must be running as an ECS sidecar or EC2 service.
+# Configure it to export:
+#   - AWS/SQS ApproximateNumberOfMessagesVisible (queue depth)
+#   - AWS/SQS NumberOfMessagesSent / Deleted
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "django_api"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+
+  - job_name: "cloudwatch_sqs"
+    static_configs:
+      - targets: ["cloudwatch-exporter:9106"]
+    metrics_path: /metrics

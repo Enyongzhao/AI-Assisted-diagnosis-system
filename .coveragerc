@@ -1,0 +1,27 @@
+[run]
+omit =
+    */migrations/*
+    */settings/*
+    manage.py
+    */wsgi.py
+    */asgi.py
+    conftest.py
+    tests/*
+    infra/*
+    frontend/*
+    */venv/*
+    # Lambda deployment artifacts — not unit-tested (require SQS event + Django bootstrap)
+    tasks/llm_worker.py
+    tasks/pdf_worker.py
+    tasks/dlq_handler.py
+    # Management commands — CLI-only utilities
+    */management/*
+    # Admin registrations — auto-generated boilerplate
+    */admin.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if TYPE_CHECKING:
