@@ -1,21 +1,24 @@
 // design_doc §1 — Three roles: admin / clinician / client
-// Routes are guarded by PrivateRoute which checks auth + optional role list.
-// Admin is redirected to /admin (user management) instead of the diagnosis list.
+// Admin  → /admin        (user management)
+// Clinician → /          (patient list) → /patients/:id → /patients/:id/diagnosis/submit
+// Client → /             (own diagnosis reports)
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
-import { useAuth } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import PrivateRoute from './router/PrivateRoute'
 import LoginPage from './pages/LoginPage'
 import AdminPage from './pages/AdminPage'
+import PatientListPage from './pages/PatientListPage'
+import PatientDetailPage from './pages/PatientDetailPage'
 import DiagnosisListPage from './pages/DiagnosisListPage'
 import DiagnosisSubmitPage from './pages/DiagnosisSubmitPage'
 import DiagnosisDetailPage from './pages/DiagnosisDetailPage'
 import ReportDownloadPage from './pages/ReportDownloadPage'
 
-// Redirects admin to /admin; everyone else sees the diagnosis list.
+// Role-based home: admin → /admin, clinician → patient list, client → diagnosis list
 function HomeRoute() {
   const { user } = useAuth()
   if (user?.role === 'admin') return <Navigate to="/admin" replace />
+  if (user?.role === 'clinician') return <PatientListPage />
   return <DiagnosisListPage />
 }
 
@@ -26,30 +29,21 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Root: admin → /admin, others → diagnosis list */}
-          <Route path="/" element={
-            <PrivateRoute><HomeRoute /></PrivateRoute>
-          } />
+          {/* Home — role-dependent */}
+          <Route path="/" element={<PrivateRoute><HomeRoute /></PrivateRoute>} />
 
-          {/* Admin only: user management */}
-          <Route path="/admin" element={
-            <PrivateRoute roles={['admin']}><AdminPage /></PrivateRoute>
-          } />
+          {/* Admin: user management */}
+          <Route path="/admin" element={<PrivateRoute roles={['admin']}><AdminPage /></PrivateRoute>} />
 
-          {/* Clinician only: submit a new diagnosis */}
-          <Route path="/diagnosis/submit" element={
-            <PrivateRoute roles={['clinician']}><DiagnosisSubmitPage /></PrivateRoute>
-          } />
+          {/* Clinician: per-patient detail + new diagnosis */}
+          <Route path="/patients/:patientId" element={<PrivateRoute roles={['clinician']}><PatientDetailPage /></PrivateRoute>} />
+          <Route path="/patients/:patientId/diagnosis/submit" element={<PrivateRoute roles={['clinician']}><DiagnosisSubmitPage /></PrivateRoute>} />
 
-          {/* All roles: polling detail page */}
-          <Route path="/diagnosis/:id" element={
-            <PrivateRoute><DiagnosisDetailPage /></PrivateRoute>
-          } />
+          {/* All roles: diagnosis detail (polling) */}
+          <Route path="/diagnosis/:id" element={<PrivateRoute><DiagnosisDetailPage /></PrivateRoute>} />
 
-          {/* All roles: PDF download page */}
-          <Route path="/diagnosis/:id/report" element={
-            <PrivateRoute><ReportDownloadPage /></PrivateRoute>
-          } />
+          {/* All roles: PDF download */}
+          <Route path="/diagnosis/:id/report" element={<PrivateRoute><ReportDownloadPage /></PrivateRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

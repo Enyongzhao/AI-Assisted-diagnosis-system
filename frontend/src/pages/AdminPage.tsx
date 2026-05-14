@@ -1,7 +1,7 @@
 // design_doc §4.4 — Admin-only user management
 // Supports: list, search, create, edit (including password reset), deactivate.
 // Excludes admin-role accounts from the list — admin manages clinicians and clients only.
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent, type KeyboardEvent } from 'react'
 import {
   listUsers,
   createUser,
@@ -32,12 +32,16 @@ const EMPTY_FORM: UserForm = {
   patientName: '', dateOfBirth: '', gender: 'male',
 }
 
+const PAGE_SIZE = 5
+
 export default function AdminPage() {
   const { logout } = useAuth()
 
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [inputValue, setInputValue] = useState('')
+  const [activeQuery, setActiveQuery] = useState('')
+  const [page, setPage] = useState(1)
 
   // Form state
   const [formMode, setFormMode] = useState<FormMode>('add')
@@ -73,11 +77,24 @@ export default function AdminPage() {
   useEffect(() => { loadUsers() }, [])
 
   // ── Search ────────────────────────────────────────────────────────────────
+  function handleSearch() {
+    setActiveQuery(inputValue)
+    setPage(1)
+  }
+
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') handleSearch()
+  }
+
   const filtered = users.filter(u =>
-    u.username.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    u.role.toLowerCase().includes(search.toLowerCase())
+    activeQuery === '' ||
+    u.username.toLowerCase().includes(activeQuery.toLowerCase()) ||
+    u.email.toLowerCase().includes(activeQuery.toLowerCase()) ||
+    u.role.toLowerCase().includes(activeQuery.toLowerCase())
   )
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const displayed = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // ── Open form ─────────────────────────────────────────────────────────────
   function openAdd() {
@@ -288,11 +305,13 @@ export default function AdminPage() {
         {/* Search */}
         <div style={s.searchRow}>
           <input
-            style={{ ...s.input, width: '300px' }}
+            style={{ ...s.input, width: '280px' }}
             placeholder="Search by username, email or role…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
           />
+          <button style={s.searchBtn} onClick={handleSearch}>Search</button>
           <span style={s.countHint}>{filtered.length} user{filtered.length !== 1 ? 's' : ''}</span>
         </div>
 
@@ -302,65 +321,74 @@ export default function AdminPage() {
         ) : filtered.length === 0 ? (
           <p style={{ color: '#7f8c8d' }}>No users found.</p>
         ) : (
-          <table style={s.table}>
-            <thead>
-              <tr>
-                <th style={s.th}>ID</th>
-                <th style={s.th}>Username</th>
-                <th style={s.th}>Email</th>
-                <th style={s.th}>Role</th>
-                <th style={s.th}>Status</th>
-                <th style={s.th}>Joined</th>
-                <th style={s.th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(u => (
-                <tr key={u.id} style={s.tr}>
-                  <td style={s.td}>{u.id}</td>
-                  <td style={s.td}><strong>{u.username}</strong></td>
-                  <td style={s.td}>{u.email}</td>
-                  <td style={s.td}><RoleBadge role={u.role} /></td>
-                  <td style={s.td}>
-                    <span style={u.is_active ? s.activeDot : s.inactiveDot}>
-                      {u.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={s.td}>{new Date(u.date_joined).toLocaleDateString()}</td>
-                  <td style={s.td}>
-                    <button style={s.editBtn} onClick={() => openEdit(u)}>Edit</button>
-
-                    {confirmDeleteId === u.id ? (
-                      <>
-                        <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#c0392b' }}>
-                          Confirm?
-                        </span>
-                        <button
-                          style={{ ...s.deleteBtn, marginLeft: '6px' }}
-                          onClick={() => handleDelete(u.id)}
-                        >
-                          Yes
-                        </button>
-                        <button
-                          style={{ ...s.cancelBtn, marginLeft: '4px', padding: '3px 10px' }}
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          No
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        style={{ ...s.deleteBtn, marginLeft: '8px' }}
-                        onClick={() => setConfirmDeleteId(u.id)}
-                      >
-                        Deactivate
-                      </button>
-                    )}
-                  </td>
+          <>
+            <table style={s.table}>
+              <thead>
+                <tr>
+                  <th style={s.th}>ID</th>
+                  <th style={s.th}>Username</th>
+                  <th style={s.th}>Email</th>
+                  <th style={s.th}>Role</th>
+                  <th style={s.th}>Status</th>
+                  <th style={s.th}>Joined</th>
+                  <th style={s.th}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {displayed.map(u => (
+                  <tr key={u.id} style={s.tr}>
+                    <td style={s.td}>{u.id}</td>
+                    <td style={s.td}><strong>{u.username}</strong></td>
+                    <td style={s.td}>{u.email}</td>
+                    <td style={s.td}><RoleBadge role={u.role} /></td>
+                    <td style={s.td}>
+                      <span style={u.is_active ? s.activeDot : s.inactiveDot}>
+                        {u.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td style={s.td}>{new Date(u.date_joined).toLocaleDateString()}</td>
+                    <td style={s.td}>
+                      <button style={s.editBtn} onClick={() => openEdit(u)}>Edit</button>
+
+                      {confirmDeleteId === u.id ? (
+                        <>
+                          <span style={{ marginLeft: '8px', fontSize: '0.85rem', color: '#c0392b' }}>
+                            Confirm?
+                          </span>
+                          <button
+                            style={{ ...s.deleteBtn, marginLeft: '6px' }}
+                            onClick={() => handleDelete(u.id)}
+                          >
+                            Yes
+                          </button>
+                          <button
+                            style={{ ...s.cancelBtn, marginLeft: '4px', padding: '3px 10px' }}
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            No
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          style={{ ...s.deleteBtn, marginLeft: '8px' }}
+                          onClick={() => setConfirmDeleteId(u.id)}
+                        >
+                          Deactivate
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {totalPages > 1 && (
+              <div style={s.pagination}>
+                <button style={s.pageBtn} disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+                <span style={s.pageLabel}>Page {page} / {totalPages}</span>
+                <button style={s.pageBtn} disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
@@ -427,8 +455,12 @@ const s: Record<string, React.CSSProperties> = {
     padding: '8px 16px', background: '#fff', color: '#7f8c8d',
     border: '1px solid #dce1e7', borderRadius: '6px', cursor: 'pointer',
   },
-  searchRow: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' },
-  countHint: { color: '#7f8c8d', fontSize: '0.88rem' },
+  searchRow: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' },
+  searchBtn: { padding: '8px 16px', background: '#3498db', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600, fontSize: '0.93rem' },
+  countHint: { color: '#7f8c8d', fontSize: '0.88rem', marginLeft: '4px' },
+  pagination: { marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' },
+  pageBtn: { padding: '6px 14px', border: '1px solid #dce1e7', borderRadius: '6px', cursor: 'pointer', background: '#fff' },
+  pageLabel: { color: '#7f8c8d', fontSize: '0.9rem' },
   table: {
     width: '100%', borderCollapse: 'collapse', background: '#fff',
     borderRadius: '8px', overflow: 'hidden',

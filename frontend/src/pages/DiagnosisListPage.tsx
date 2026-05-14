@@ -1,25 +1,24 @@
 // design_doc §4.3 — GET /api/v1/diagnosis/
 // Lists diagnosis tasks. Backend filters by role automatically:
-//   Clinician → own submissions; Client → own records; Admin → all.
+//   Client → own records (no search bar, can change password)
+//   Admin  → all records (with search bar)
 //
 // Client-specific behaviour:
-//   - failed records are hidden (client never sees a broken report)
-//   - all in-progress statuses are displayed as "In Progress" (simplified)
+//   - failed records are hidden
 //   - auto-refreshes every 5 s while any record is still in progress
-import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef, type KeyboardEvent, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import {
   listDiagnoses,
   type DiagnosisListItem,
   type DiagnosisStatus,
 } from '../api/diagnosisApi'
+import { changePassword } from '../api/authApi'
 import { useAuth } from '../context/AuthContext'
 import StatusBadge from '../components/StatusBadge'
 
-// Statuses the client never needs to see
 const CLIENT_HIDDEN: DiagnosisStatus[] = ['failed']
 
-// Statuses that mean "still being worked on" from the client's perspective
 const IN_PROGRESS: DiagnosisStatus[] = [
   'pending',
   'processing',
@@ -28,20 +27,30 @@ const IN_PROGRESS: DiagnosisStatus[] = [
 ]
 
 const POLL_INTERVAL_MS = 5000
+const PAGE_SIZE = 5
 
 export default function DiagnosisListPage() {
   const { user, logout } = useAuth()
-  const navigate = useNavigate()
   const isClient = user?.role === 'client'
 
   const [items, setItems] = useState<DiagnosisListItem[]>([])
-  const [count, setCount] = useState(0)
-  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const PAGE_SIZE = 20
+  // Search (admin only)
+  const [inputValue, setInputValue] = useState('')
+  const [activeQuery, setActiveQuery] = useState('')
+  const [page, setPage] = useState(1)
+
+  // Change password modal
+  const [showPwModal, setShowPwModal] = useState(false)
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [pwSuccess, setPwSuccess] = useState(false)
+  const [pwLoading, setPwLoading] = useState(false)
 
   function stopPoll() {
     if (intervalRef.current) {
@@ -50,30 +59,23 @@ export default function DiagnosisListPage() {
     }
   }
 
-  async function fetchPage(p: number, silent = false) {
+  async function fetchAll(silent = false) {
     if (!silent) setLoading(true)
     try {
-      const data = await listDiagnoses({ page: p, page_size: PAGE_SIZE })
+      const data = await listDiagnoses({ page_size: 500 })
       let results = data.results
-
-      // Client: hide failed records entirely
       if (isClient) {
         results = results.filter(r => !CLIENT_HIDDEN.includes(r.status))
       }
-
       setItems(results)
-      setCount(data.count)
       setError(null)
 
-      // Auto-poll only while client has in-progress records
       if (isClient) {
         const hasInProgress = results.some(r => IN_PROGRESS.includes(r.status))
         if (hasInProgress && !intervalRef.current) {
-          intervalRef.current = setInterval(() => fetchPage(p, true), POLL_INTERVAL_MS)
+          intervalRef.current = setInterval(() => fetchAll(true), POLL_INTERVAL_MS)
         }
-        if (!hasInProgress) {
-          stopPoll()
-        }
+        if (!hasInProgress) stopPoll()
       }
     } catch {
       setError('Failed to load diagnoses.')
@@ -83,15 +85,63 @@ export default function DiagnosisListPage() {
   }
 
   useEffect(() => {
-    fetchPage(page)
+    fetchAll()
     return stopPoll
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+  }, [])
 
-  const totalPages = Math.ceil(count / PAGE_SIZE)
+  function handleSearch() {
+    setActiveQuery(inputValue)
+    setPage(1)
+  }
 
-  function renderStatus(item: DiagnosisListItem) {
-    return <StatusBadge status={item.status} />
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') handleSearch()
+  }
+
+  const filtered = items.filter(item =>
+    activeQuery === '' ||
+    item.patient_name.toLowerCase().includes(activeQuery.toLowerCase()) ||
+    item.diagnosis_id.toLowerCase().includes(activeQuery.toLowerCase())
+  )
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const displayed = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  // ── Change password ──────────────────────────────────────────────────────
+  function openPwModal() {
+    setPwCurrent('')
+    setPwNew('')
+    setPwConfirm('')
+    setPwError(null)
+    setPwSuccess(false)
+    setShowPwModal(true)
+  }
+
+  async function handlePwSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (pwNew !== pwConfirm) {
+      setPwError('New passwords do not match.')
+      return
+    }
+    if (pwNew.length < 6) {
+      setPwError('New password must be at least 6 characters.')
+      return
+    }
+    setPwError(null)
+    setPwLoading(true)
+    try {
+      await changePassword(pwCurrent, pwNew)
+      setPwSuccess(true)
+      setTimeout(() => setShowPwModal(false), 1500)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        'Failed to change password.'
+      setPwError(msg)
+    } finally {
+      setPwLoading(false)
+    }
   }
 
   return (
@@ -100,10 +150,8 @@ export default function DiagnosisListPage() {
         <span style={styles.navTitle}>AI Diagnosis System</span>
         <div style={styles.navRight}>
           <span style={styles.navUser}>{user?.username} ({user?.role})</span>
-          {user?.role === 'clinician' && (
-            <button style={styles.newBtn} onClick={() => navigate('/diagnosis/submit')}>
-              + New Diagnosis
-            </button>
+          {isClient && (
+            <button style={styles.pwBtn} onClick={openPwModal}>Change Password</button>
           )}
           <button style={styles.logoutBtn} onClick={logout}>Logout</button>
         </div>
@@ -114,10 +162,24 @@ export default function DiagnosisListPage() {
           {isClient ? 'My Reports' : 'Diagnosis Records'}
         </h2>
 
-        {/* Auto-refresh hint for client */}
         {isClient && items.some(r => IN_PROGRESS.includes(r.status)) && (
           <div style={styles.infoBox}>
-            🔄 Your report is being prepared. This page refreshes automatically every 5 seconds.
+            Your report is being prepared. This page refreshes automatically every 5 seconds.
+          </div>
+        )}
+
+        {/* Search toolbar — admin only */}
+        {!isClient && (
+          <div style={styles.toolbar}>
+            <input
+              style={styles.searchInput}
+              placeholder="Search by patient name or ID…"
+              value={inputValue}
+              onChange={e => setInputValue(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            <button style={styles.searchBtn} onClick={handleSearch}>Search</button>
+            <span style={styles.hint}>{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
           </div>
         )}
 
@@ -125,7 +187,7 @@ export default function DiagnosisListPage() {
 
         {loading ? (
           <p>Loading…</p>
-        ) : items.length === 0 ? (
+        ) : displayed.length === 0 ? (
           <p style={{ color: '#7f8c8d' }}>
             {isClient ? 'No reports found.' : 'No diagnosis records found.'}
           </p>
@@ -142,7 +204,7 @@ export default function DiagnosisListPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map(item => (
+                {displayed.map(item => (
                   <tr key={item.diagnosis_id} style={styles.tr}>
                     {!isClient && (
                       <td style={styles.td}>
@@ -150,17 +212,12 @@ export default function DiagnosisListPage() {
                       </td>
                     )}
                     <td style={styles.td}>{item.patient_name}</td>
-                    <td style={styles.td}>{renderStatus(item)}</td>
+                    <td style={styles.td}><StatusBadge status={item.status} /></td>
                     <td style={styles.td}>{new Date(item.submitted_at).toLocaleString()}</td>
                     <td style={styles.td}>
-                      <Link to={`/diagnosis/${item.diagnosis_id}`} style={styles.link}>
-                        View
-                      </Link>
+                      <Link to={`/diagnosis/${item.diagnosis_id}`} style={styles.link}>View</Link>
                       {item.status === 'completed' && (
-                        <Link
-                          to={`/diagnosis/${item.diagnosis_id}/report`}
-                          style={{ ...styles.link, marginLeft: '12px' }}
-                        >
+                        <Link to={`/diagnosis/${item.diagnosis_id}/report`} style={{ ...styles.link, marginLeft: '12px' }}>
                           PDF
                         </Link>
                       )}
@@ -172,26 +229,62 @@ export default function DiagnosisListPage() {
 
             {totalPages > 1 && (
               <div style={styles.pagination}>
-                <button
-                  style={styles.pageBtn}
-                  disabled={page === 1}
-                  onClick={() => setPage(p => p - 1)}
-                >
-                  ← Prev
-                </button>
-                <span style={{ margin: '0 12px' }}>Page {page} / {totalPages}</span>
-                <button
-                  style={styles.pageBtn}
-                  disabled={page === totalPages}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next →
-                </button>
+                <button style={styles.pageBtn} disabled={page === 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
+                <span style={styles.pageLabel}>Page {page} / {totalPages}</span>
+                <button style={styles.pageBtn} disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
               </div>
             )}
           </>
         )}
       </main>
+
+      {/* Change Password Modal */}
+      {showPwModal && (
+        <div style={styles.overlay} onClick={() => setShowPwModal(false)}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>Change Password</h3>
+            {pwSuccess ? (
+              <div style={styles.successBox}>Password changed successfully!</div>
+            ) : (
+              <form onSubmit={handlePwSubmit} style={styles.modalForm}>
+                {pwError && <div style={styles.errorBox}>{pwError}</div>}
+                <label style={styles.label}>Current Password</label>
+                <input
+                  style={styles.input}
+                  type="password"
+                  required
+                  value={pwCurrent}
+                  onChange={e => setPwCurrent(e.target.value)}
+                />
+                <label style={styles.label}>New Password</label>
+                <input
+                  style={styles.input}
+                  type="password"
+                  required
+                  value={pwNew}
+                  onChange={e => setPwNew(e.target.value)}
+                />
+                <label style={styles.label}>Confirm New Password</label>
+                <input
+                  style={styles.input}
+                  type="password"
+                  required
+                  value={pwConfirm}
+                  onChange={e => setPwConfirm(e.target.value)}
+                />
+                <div style={styles.modalBtns}>
+                  <button style={styles.saveBtn} type="submit" disabled={pwLoading}>
+                    {pwLoading ? 'Saving…' : 'Confirm'}
+                  </button>
+                  <button style={styles.cancelBtn} type="button" onClick={() => setShowPwModal(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -205,9 +298,9 @@ const styles: Record<string, React.CSSProperties> = {
   navTitle: { fontWeight: 700, fontSize: '1.1rem' },
   navRight: { display: 'flex', alignItems: 'center', gap: '12px' },
   navUser: { fontSize: '0.9rem', color: '#bdc3c7' },
-  newBtn: {
-    background: '#27ae60', color: '#fff', border: 'none',
-    borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontWeight: 600,
+  pwBtn: {
+    background: 'transparent', color: '#bdc3c7', border: '1px solid #7f8c8d',
+    borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', fontSize: '0.88rem',
   },
   logoutBtn: {
     background: 'transparent', color: '#bdc3c7', border: '1px solid #7f8c8d',
@@ -219,9 +312,17 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#eaf4fb', border: '1px solid #85c1e9', borderRadius: '6px',
     padding: '10px 16px', marginBottom: '16px', color: '#1a6fa1', fontSize: '0.9rem',
   },
+  toolbar: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' },
+  searchInput: { padding: '8px 12px', border: '1px solid #dce1e7', borderRadius: '6px', fontSize: '0.93rem', width: '280px' },
+  searchBtn: { padding: '8px 16px', background: '#3498db', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 },
+  hint: { color: '#7f8c8d', fontSize: '0.88rem', marginLeft: '4px' },
   errorBox: {
     background: '#fdecea', color: '#c0392b', border: '1px solid #f5c6cb',
-    borderRadius: '6px', padding: '10px 14px', marginBottom: '16px',
+    borderRadius: '6px', padding: '10px 14px', marginBottom: '12px',
+  },
+  successBox: {
+    background: '#d4edda', color: '#155724', border: '1px solid #c3e6cb',
+    borderRadius: '6px', padding: '12px 16px', textAlign: 'center', fontWeight: 600,
   },
   table: {
     width: '100%', borderCollapse: 'collapse', background: '#fff',
@@ -234,9 +335,32 @@ const styles: Record<string, React.CSSProperties> = {
   tr: { borderBottom: '1px solid #ecf0f1' },
   td: { padding: '12px 16px', fontSize: '0.9rem', color: '#34495e', verticalAlign: 'middle' },
   link: { color: '#3498db', textDecoration: 'none', fontWeight: 600 },
-  pagination: { marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  pageBtn: {
-    padding: '6px 14px', border: '1px solid #dce1e7',
-    borderRadius: '6px', cursor: 'pointer', background: '#fff',
+  pagination: { marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' },
+  pageBtn: { padding: '6px 14px', border: '1px solid #dce1e7', borderRadius: '6px', cursor: 'pointer', background: '#fff' },
+  pageLabel: { color: '#7f8c8d', fontSize: '0.9rem' },
+  // Modal
+  overlay: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  },
+  modal: {
+    background: '#fff', borderRadius: '10px', padding: '28px 32px',
+    width: '360px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+  },
+  modalTitle: { margin: '0 0 20px', color: '#2c3e50', fontSize: '1.1rem' },
+  modalForm: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  label: { fontWeight: 600, fontSize: '0.88rem', color: '#34495e', marginTop: '10px' },
+  input: {
+    padding: '8px 12px', border: '1px solid #dce1e7', borderRadius: '6px',
+    fontSize: '0.93rem', width: '100%', boxSizing: 'border-box',
+  },
+  modalBtns: { display: 'flex', gap: '10px', marginTop: '18px' },
+  saveBtn: {
+    flex: 1, padding: '9px', background: '#3498db', color: '#fff',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600,
+  },
+  cancelBtn: {
+    flex: 1, padding: '9px', background: '#fff', color: '#7f8c8d',
+    border: '1px solid #dce1e7', borderRadius: '6px', cursor: 'pointer',
   },
 }

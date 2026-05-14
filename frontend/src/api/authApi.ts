@@ -60,3 +60,13 @@ export async function refreshAccessToken(): Promise<string> {
   const res = await axios.post<{ access: string }>(`${BASE}/auth/refresh/`, { refresh })
   return res.data.access
 }
+
+// Changes the current user's own password. Requires a valid access token.
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const token = getAccessToken()
+  await axios.post(
+    `${BASE}/auth/change-password/`,
+    { current_password: currentPassword, new_password: newPassword },
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+}
