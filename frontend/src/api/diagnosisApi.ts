@@ -62,6 +62,9 @@ export interface DiagnosisDetail {
   status: DiagnosisStatus
   submitted_at: string
   completed_at?: string
+  // design_doc §4.3 Phase 4 — duplicate detection warning fields
+  has_warning: boolean
+  warning_type: string | null   // "POSSIBLE_DUPLICATE" or null
   llm_report: LLMReport | null
   doctor_opinion: DoctorOpinion | null
   pdf_url?: string

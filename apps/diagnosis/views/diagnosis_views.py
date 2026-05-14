@@ -20,6 +20,7 @@ from apps.diagnosis.serializers.diagnosis_serializer import (
 
 from repositories.diagnosis_repository import DiagnosisRepository
 from repositories.patient_repository import PatientRepository
+from services.diagnosis_service import DiagnosisService
 
 
 class DiagnosisPagination(PageNumberPagination):
@@ -58,27 +59,32 @@ class DiagnosisListCreateView(APIView):
                 {"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND
             )
 
-        # Phase 4 will add duplicate detection here (DuplicateSubmissionError check)
-        job = DiagnosisRepository.create(
+        # design_doc §4.3 Phase 4 — DiagnosisService handles duplicate detection +
+        # job creation + firing generate_llm_report.delay().
+        # DuplicateSubmissionError (Hard Error) is not caught here — it propagates
+        # to custom_exception_handler which returns HTTP 400.
+        result = DiagnosisService.submit(
             patient=patient,
             submitted_by=request.user,
             structured_data=data["structured_data"],
             free_text=data.get("free_text", ""),
         )
 
-        # design_doc §6 — fire async LLM task; API returns 202 immediately
-        from tasks.llm_task import generate_llm_report
-        generate_llm_report.delay(str(job.id))
+        job = result["job"]
+        response_body = {
+            "diagnosis_id": str(job.id),
+            "status": job.status,
+            "submitted_at": job.submitted_at.isoformat(),
+            "message": "LLM report generation in progress. Poll /api/v1/diagnosis/{id}/ for result.",
+        }
 
-        return Response(
-            {
-                "diagnosis_id": str(job.id),
-                "status": job.status,
-                "submitted_at": job.submitted_at.isoformat(),
-                "message": "LLM report generation in progress. Poll /api/v1/diagnosis/{id}/ for result.",
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        # design_doc §4.3 — Soft Warning: include warning fields in 202 response
+        if result["has_warning"]:
+            response_body["warning"] = result["warning_type"]
+            response_body["warning_message"] = result["warning_message"]
+            response_body["previous_diagnosis_id"] = str(result["previous_diagnosis_id"])
+
+        return Response(response_body, status=status.HTTP_202_ACCEPTED)
 
     def get(self, request):
         user = request.user

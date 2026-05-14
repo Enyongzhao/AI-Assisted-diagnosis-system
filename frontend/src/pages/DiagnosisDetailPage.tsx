@@ -8,6 +8,7 @@ import { getDiagnosis, submitOpinion, type DiagnosisDetail } from '../api/diagno
 import { useAuth } from '../context/AuthContext'
 import { usePolling } from '../hooks/usePolling'
 import StatusBadge from '../components/StatusBadge'
+import WarningBanner from '../components/WarningBanner'
 
 // Polling stops when status leaves the "in-flight" states
 const TERMINAL = new Set(['awaiting_doctor_input', 'completed', 'failed'])
@@ -88,6 +89,13 @@ export default function DiagnosisDetailPage() {
       <p style={styles.meta}>
         Submitted: {new Date(data.submitted_at).toLocaleString()}
       </p>
+
+      {/* design_doc §4.3 Phase 4 — Soft Warning banner (POSSIBLE_DUPLICATE) */}
+      {data.has_warning && data.warning_type === 'POSSIBLE_DUPLICATE' && (
+        <WarningBanner
+          message="A recent diagnosis record exists for this patient."
+        />
+      )}
 
       {/* Polling spinner for in-flight states */}
       {(data.status === 'pending' || data.status === 'processing' || data.status === 'generating_pdf') && (

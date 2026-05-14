@@ -11,10 +11,12 @@ from apps.diagnosis.models import DiagnosisJob
 class DiagnosisRepository:
 
     @staticmethod
-    def create(*, patient, submitted_by, structured_data, free_text=""):
+    def create(*, patient, submitted_by, structured_data, free_text="",
+               has_warning=False, warning_type=""):
         """
         Flatten the structured_data dict into DiagnosisJob columns.
         design_doc §4.3 — structured_data fields map 1:1 to table columns.
+        Phase 4: accepts has_warning + warning_type set by DiagnosisService.
         """
         return DiagnosisJob.objects.create(
             patient=patient,
@@ -28,6 +30,8 @@ class DiagnosisRepository:
             duration_days=structured_data.get("duration_days"),
             existing_conditions=structured_data.get("existing_conditions", []),
             free_text=free_text,
+            has_warning=has_warning,
+            warning_type=warning_type,
         )
 
     @staticmethod

@@ -117,6 +117,12 @@ CELERY_TASK_TRACK_STARTED = True
 # autodiscover_tasks(["tasks"]) looks for tasks.tasks — wrong package structure.
 CELERY_IMPORTS = ("tasks.llm_task", "tasks.pdf_task")
 
+# ── Duplicate detection windows — design_doc §4.3 ─────────────────────────
+# Set to small values (e.g. 0.01 = ~36s) in .env to test all three scenarios
+# without waiting. Production keeps defaults: 1h hard error, 24h soft warning.
+DUPLICATE_HARD_ERROR_HOURS = config("DUPLICATE_HARD_ERROR_HOURS", default=1.0, cast=float)
+DUPLICATE_SOFT_WARN_HOURS  = config("DUPLICATE_SOFT_WARN_HOURS",  default=24.0, cast=float)
+
 # ── LLM Adapter — design_doc §6 ───────────────────────────────────────────
 # LLM_PROVIDER: "claude" | "openai" | "mock"
 # "mock" returns a fixed JSON response — safe default for dev/test
